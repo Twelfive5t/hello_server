@@ -1,7 +1,10 @@
-cmake_minimum_required(VERSION 3.22.1)
+find_package(spdlog CONFIG REQUIRED)
 
 add_executable(main
-    src/hello_server.c
+    src/hello_server.cpp
 )
 
-install(TARGETS main DESTINATION ${CMAKE_INSTALL_PREFIX}/bin${VERSION_RELEASE})
+target_include_directories(main PRIVATE ${CMAKE_SOURCE_DIR}/common)
+target_link_libraries(main PRIVATE spdlog::spdlog)
+
+install(TARGETS main DESTINATION bin${VERSION_RELEASE})

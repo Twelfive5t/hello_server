@@ -7,10 +7,10 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 include(VersionConfig)
 
 # =================== 项目基本信息 ===================
-project(hello_server VERSION 1.0.0)
+project(hello_server VERSION ${VERSION})
 
 # 导入通用模块配置
 include(CommonConfig)
 
 # =================== 子目录 ===================
-add_subdirectory(${CMAKE_SOURCE_DIR}/services/server)
+add_subdirectory(services/server)
