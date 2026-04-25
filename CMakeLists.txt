@@ -11,6 +11,7 @@ project(hello_server VERSION ${VERSION})
 
 # 导入通用模块配置
 include(CommonConfig)
+include(ClangTools)
 
 # =================== 子目录 ===================
 add_subdirectory(services/server)
