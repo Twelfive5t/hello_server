@@ -1,0 +1,5 @@
+{
+  "cmake.configureOnOpen": false, // 禁止在打开项目时自动配置
+  "cmake.configureOnStart": false, // 禁止在启动时自动配置
+  "cmake.buildTask": true, // 启用构建任务
+}

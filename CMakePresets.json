@@ -1,0 +1,47 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 22,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "Server_Base",
+      "hidden": true,
+      "generator": "Unix Makefiles",
+      "cacheVariables": {
+        "CMAKE_MAKE_PROGRAM": "make", // 指定使用 make 作为构建工具
+        "CMAKE_VERBOSE_MAKEFILE": "OFF", // 禁止生成冗长的 Makefile 输出
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON", // 生成 compile_commands.json 文件
+        "CMAKE_INSTALL_PREFIX": "products" // 设置安装目录为 products
+      }
+    },
+    {
+      "name": "Server_Debug",
+      "inherits": "Server_Base",
+      "binaryDir": "${sourceDir}/build/Debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "Server_Release",
+      "inherits": "Server_Base",
+      "binaryDir": "${sourceDir}/build/Release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "Server_Debug",
+      "configurePreset": "Server_Debug"
+    },
+    {
+      "name": "Server_Release",
+      "configurePreset": "Server_Release"
+    }
+  ]
+}

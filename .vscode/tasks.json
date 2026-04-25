@@ -1,0 +1,45 @@
+{
+  "tasks": [
+    {
+      "label": "Build",
+      "hide": true,
+      "type": "shell",
+      "command": "./build.sh ${input:preset}",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always", // 始终显示终端
+        "panel": "shared", // 使用共享终端
+        "showReuseMessage": false, // 不显示重复使用终端的消息
+        "clear": true, // 每次运行前清除终端
+        "close": false, // 运行后不自动关闭终端
+        "focus": false, // 运行后不自动聚焦终端
+        "preserveTerminalName": true, // 保持终端名称不变
+        "revealProblems": "onProblem" // 仅在有问题时显示问题面板
+      }
+    },
+    {
+      "label": "ServerBuild",
+      "dependsOn": ["Build"],
+      "dependsOrder": "sequence", // 顺序执行依赖任务
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "preset",
+      "type": "pickString",
+      "description": "Select the CMake preset to build",
+      "options": [
+        "Server_Debug",
+        "Server_Release"
+      ],
+      "default": "Server_Release"
+    }
+  ]
+}
