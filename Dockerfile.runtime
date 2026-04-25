@@ -1,0 +1,16 @@
+# ! 注意，这个文件不要改动，环境有需要改动 package 中的 Dockerfile
+FROM ubuntu:22.04
+ENV TZ=Asia/Shanghai
+
+# 安装最小运行环境
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    arping \
+    ethtool \
+    libc++1 \
+    libatomic1 \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+CMD ["bash"]
