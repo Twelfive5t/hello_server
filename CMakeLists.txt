@@ -9,4 +9,8 @@ include(VersionConfig)
 # =================== 项目基本信息 ===================
 project(hello_server VERSION 1.0.0)
 
+# 导入通用模块配置
+include(CommonConfig)
+
+# =================== 子目录 ===================
 add_subdirectory(${CMAKE_SOURCE_DIR}/services/server)
