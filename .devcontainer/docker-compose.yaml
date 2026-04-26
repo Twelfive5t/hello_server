@@ -27,6 +27,7 @@ services:
       - /usr/libexec/docker/cli-plugins:/usr/libexec/docker/cli-plugins
       - /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static
       - ~/.conan2:/root/.conan2
+      - ~/.ssh:/root/.ssh:ro
 
       # - /sys/class/gpio:/sys/class/gpio:rw
     # Uncomment the next four lines if you will use a ptrace-based debugger like C++, Go, and Rust.
