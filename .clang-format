@@ -6,7 +6,7 @@ BasedOnStyle: LLVM
 IndentWidth: 4
 TabWidth: 4
 UseTab: Never
-ColumnLimit: 80
+ColumnLimit: 100
 
 # 大括号：函数/类换行，控制语句不换行
 BreakBeforeBraces: Linux
@@ -36,6 +36,8 @@ AllowAllParametersOfDeclarationOnNextLine: false
 BinPackParameters: false
 BinPackArguments: false
 AlignAfterOpenBracket: BlockIndent
+AlwaysBreakAfterReturnType: None
+PenaltyReturnTypeOnItsOwnLine: 1000
 
 # 禁止短代码单行（空 lambda 除外）
 AllowShortFunctionsOnASingleLine: None

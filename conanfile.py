@@ -11,11 +11,12 @@ class CompressorRecipe(ConanFile):
     # https://docs.conan.io/2.0/reference/conanfile/methods/requirements.html
     def requirements(self):
         self.requires("spdlog/1.13.0")
+        self.requires("grpc/1.54.3")
 
     # The build_requirements() method is used to define tool_requires and test_requires:
     # https://docs.conan.io/2/reference/conanfile/methods/build_requirements.html
     def build_requirements(self):
-        self.tool_requires("cmake/[>=3.22 <3.23]")
+        self.tool_requires("cmake/3.22.6")
 
     # The cmake_layout() sets the folders and cpp attributes to follow the structure of a typical CMake project.
     # https://docs.conan.io/2.0/reference/tools/cmake/cmake_layout.html
@@ -24,6 +25,8 @@ class CompressorRecipe(ConanFile):
         self.folders.build  = path.join("build", str(self.settings.build_type))
         self.folders.generators = path.join(self.folders.build, "generators")
 
+    # The purpose of generate() is to prepare the build, generating the necessary files.
+    # https://docs.conan.io/2.0/reference/conanfile/methods/generate.html
     def generate(self):
         tc = CMakeToolchain(self)
         tc.user_presets_path = False

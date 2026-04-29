@@ -14,6 +14,7 @@ include(CommonConfig)
 include(ClangTools)
 
 # =================== 子目录 ===================
+add_subdirectory(${CMAKE_SOURCE_DIR}/services/proto messages)
 add_subdirectory(services/server)
 
 # Custom command to move compile_commands.json to a fixed path
