@@ -1,7 +1,9 @@
 #include "logger/logger.hpp"
 #include "routes/routes.hpp"
 
+#include <exception>
 #include <grpcpp/grpcpp.h>
+#include <stdexcept>
 
 namespace
 {
@@ -9,6 +11,8 @@ namespace
 void run_server()
 {
     const std::string SERVER_ADDRESS = "0.0.0.0:50051";
+
+    spdlog::info("Initializing gRPC ServerBuilder...");
 
     // 1. 构建 builder
     grpc::ServerBuilder builder;
@@ -23,10 +27,19 @@ void run_server()
     // 4. 启动 server
     std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
 
-    spdlog::info(std::string("Server listening on ") + SERVER_ADDRESS);
+    if (!server) {
+        spdlog::error(
+                "BuildAndStart() returned nullptr - failed to start server on {}", SERVER_ADDRESS
+        );
+        return;
+    }
+
+    spdlog::info("Server listening on {}", SERVER_ADDRESS);
 
     // 5. 阻塞等待
     server->Wait();
+
+    spdlog::info("Server shut down.");
 }
 
 } // namespace
@@ -35,6 +48,14 @@ auto main(int /*argc*/, char * /*argv*/[]) -> int
 {
     init_logger();
     spdlog::info("Hello, Server!");
-    run_server();
+    try {
+        run_server();
+    } catch (const std::exception &e) {
+        spdlog::error("Exception in run_server: {}", e.what());
+        return 1;
+    } catch (...) {
+        spdlog::error("Unknown exception in run_server");
+        return 1;
+    }
     return 0;
 }
