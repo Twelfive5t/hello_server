@@ -1,0 +1,16 @@
+services:
+  # 编译环境
+  service:
+    image: ${PRODUCT_IMAGE}
+    restart: always
+    network_mode: "host"
+    privileged: true
+    environment:
+      - LD_LIBRARY_PATH=/workspace
+    volumes:
+      - /const:/const
+      - /user_profiles:/user_profiles
+      - /corefile:/corefile
+    command: ./main
+    ports:
+      - "50051:50051"
