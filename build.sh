@@ -36,3 +36,5 @@ fi
 cmake --preset "$PRESET"
 cmake --build --preset "$PRESET" -j$(nproc)
 cmake --install "$BUILD_DIR"
+
+./build_product_image.sh
