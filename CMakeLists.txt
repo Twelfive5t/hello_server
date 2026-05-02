@@ -11,6 +11,11 @@ project(hello_server VERSION ${VERSION})
 
 # 导入通用模块配置
 include(CommonConfig)
+
+# =================== 第三方库（在 ClangTools 之前，避免 clang-tidy 干扰）===================
+# telemetry: 直接引用 src 子目录，跳过示例，保留原始 CMakeLists 不修改
+add_subdirectory(common/telemetry/src telemetry)
+
 include(ClangTools)
 
 # =================== 子目录 ===================

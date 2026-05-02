@@ -12,6 +12,11 @@ class CompressorRecipe(ConanFile):
     def requirements(self):
         self.requires("spdlog/1.13.0")
         self.requires("grpc/1.54.3")
+        self.requires("opentelemetry-cpp/1.14.2")
+
+    def configure(self):
+        self.options["opentelemetry-cpp"].with_otlp_grpc = True
+        self.options["opentelemetry-cpp"].with_otlp_http = True
 
     # The build_requirements() method is used to define tool_requires and test_requires:
     # https://docs.conan.io/2/reference/conanfile/methods/build_requirements.html
