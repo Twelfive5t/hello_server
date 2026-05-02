@@ -11,10 +11,10 @@ inline void init_logger()
     console_sink->set_level(spdlog::level::debug);
     console_sink->set_pattern("[%Y-%m-%d %H:%M:%S] [%^%l%$] %v");
 
-    constexpr auto FILE_SIZE = 1048576;
-    constexpr auto MAX_FILES = 30;
+    constexpr auto file_size = 1048576;
+    constexpr auto max_files = 30;
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-            "logs/logs.txt", FILE_SIZE, MAX_FILES
+            "logs/logs.txt", file_size, max_files
     );
     file_sink->set_level(spdlog::level::debug);
     file_sink->set_pattern("[%Y-%m-%d %H:%M:%S] [%^%l%$] %v");

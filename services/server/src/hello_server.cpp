@@ -10,7 +10,7 @@ namespace
 
 void run_server()
 {
-    const std::string SERVER_ADDRESS = "0.0.0.0:50051";
+    const std::string server_address = "0.0.0.0:50051";
 
     spdlog::info("Initializing gRPC ServerBuilder...");
 
@@ -18,7 +18,7 @@ void run_server()
     grpc::ServerBuilder builder;
 
     // 2. 绑定端口（不安全模式）
-    builder.AddListeningPort(SERVER_ADDRESS, grpc::InsecureServerCredentials());
+    builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
 
     // 3. 注册 service
     ServerMessages::server_service service;
@@ -29,12 +29,12 @@ void run_server()
 
     if (!server) {
         spdlog::error(
-                "BuildAndStart() returned nullptr - failed to start server on {}", SERVER_ADDRESS
+                "BuildAndStart() returned nullptr - failed to start server on {}", server_address
         );
         return;
     }
 
-    spdlog::info("Server listening on {}", SERVER_ADDRESS);
+    spdlog::info("Server listening on {}", server_address);
 
     // 5. 阻塞等待
     server->Wait();

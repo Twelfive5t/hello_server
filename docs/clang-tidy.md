@@ -238,6 +238,16 @@ void helper() { }         // ✓
 
 ---
 
+### -misc-const-correctness
+
+局部变量加 `const` 属于过度约束，收益低且与 `readability-identifier-naming.ConstantCase` 规则（UPPER_CASE）冲突，禁用。
+
+```cpp
+std::string name = get_name();  // ✓ 允许：不强制 const
+```
+
+---
+
 ### -misc-include-cleaner
 
 `spdlog` header-only 库的传递包含机制与此规则冲突，误报率高，禁用。
