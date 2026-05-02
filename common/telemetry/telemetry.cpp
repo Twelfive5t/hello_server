@@ -1,4 +1,7 @@
 #include "telemetry.hpp"
+#include <cstring>
+#include <pthread.h>
+#include <sched.h>
 #include "opentelemetry/context/propagation/global_propagator.h"
 #include "opentelemetry/exporters/otlp/otlp_grpc_exporter_factory.h"
 #include "opentelemetry/sdk/resource/semantic_conventions.h"
@@ -364,14 +367,39 @@ private:
 
 void InitTracer(const TelemetryConfig& config)
 {
+    // 保存当前线程的亲和性，以便在创建后台线程后恢复
+    cpu_set_t original_cpuset;
+    bool restore_affinity = false;
+
+    // 如果配置了CPU亲和性，则临时修改当前线程的亲和性
+    // 这样在创建 gRPC Exporter 时，其内部创建的后台线程会继承这个亲和性
+    if (!config.background_cpu_affinity.empty()) {
+        if (pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &original_cpuset) == 0) {
+            cpu_set_t new_cpuset;
+            CPU_ZERO(&new_cpuset);
+            for (int cpu : config.background_cpu_affinity) {
+                CPU_SET(cpu, &new_cpuset);
+            }
+            if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &new_cpuset) == 0) {
+                restore_affinity = true;
+            }
+        }
+    }
+
     // 1. 创建 Exporter: 负责将 Trace 数据发送到后端 (如 Jaeger, Zipkin, OTel Collector)
     // 这里使用 OTLP gRPC Exporter，它是 OpenTelemetry 的标准协议
     // 并使用 FilteringExporter 进行包装，以支持在导出阶段过滤掉被标记为丢弃的 Span
     opentelemetry::exporter::otlp::OtlpGrpcExporterOptions opts;
     opts.endpoint = config.endpoint; 
 
+    // 创建 Exporter 时会初始化 gRPC 及其 event_engine 线程
     auto exporter = otlp::OtlpGrpcExporterFactory::Create(opts);
     auto filtering_exporter = std::unique_ptr<opentelemetry::sdk::trace::SpanExporter>(new FilteringExporter(std::move(exporter)));
+
+    // 恢复调用线程原来的亲和性
+    if (restore_affinity) {
+        pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &original_cpuset);
+    }
 
     // 2. 创建 Processor: 负责处理 Span (如批量发送，减少网络开销)
     // BatchSpanProcessor 会在后台缓冲 Span，并批量发送给 Exporter
