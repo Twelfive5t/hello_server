@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22.1)
 
 # =================== 包含模块文件 ===================
 # 添加 cmake 模块路径
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 # 导入版本模块配置（需在 project() 前执行）
 include(VersionConfig)
 
@@ -11,15 +11,11 @@ project(hello_server VERSION ${VERSION})
 
 # 导入通用模块配置
 include(CommonConfig)
-
-# =================== 第三方库（在 ClangTools 之前，避免 clang-tidy 干扰）===================
-# telemetry: 直接引用 src 子目录，跳过示例，保留原始 CMakeLists 不修改
-add_subdirectory(common/telemetry/src telemetry)
-
 include(ClangTools)
 
 # =================== 子目录 ===================
-add_subdirectory(${CMAKE_SOURCE_DIR}/services/proto messages)
+add_subdirectory(common/telemetry)
+add_subdirectory(services/proto messages)
 add_subdirectory(services/server)
 
 # Custom command to move compile_commands.json to a fixed path
