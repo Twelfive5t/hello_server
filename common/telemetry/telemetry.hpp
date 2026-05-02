@@ -10,6 +10,7 @@
 #define TRACE_POINT Trace trace_point_instance(FILE_LINE_FUNC);
 #define TRACE_POINT_ADD trace_point_instance.addEvent(FILE_LINE_FUNC);
 #define TRACE_POINT_ADD_MSG(msg) trace_point_instance.addEvent(msg);
+#define TRACE_POINT_DISCARD trace_point_instance.discard();
 
 struct TelemetryConfig {
     std::string service_name = "acrn_rtos";
@@ -41,6 +42,7 @@ class Trace
     auto before(const std::string &str) -> void;
     auto addEvent(const std::string &name) -> void;
     auto after() -> void;
+    auto discard() -> void;
 
   private:
     class Impl;

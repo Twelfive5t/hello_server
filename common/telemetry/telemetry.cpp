@@ -15,6 +15,8 @@
 #include "opentelemetry/trace/provider.h"
 #include <opentelemetry/sdk/trace/batch_span_processor_factory.h>
 #include <opentelemetry/sdk/trace/batch_span_processor_options.h>
+#include "opentelemetry/sdk/trace/span_data.h"
+#include "opentelemetry/sdk/trace/recordable.h"
 #include <string>
 #include <ctime>
 #include <sstream>
@@ -66,20 +68,173 @@ class IgnoreSampler : public opentelemetry::sdk::trace::Sampler
     std::vector<std::string> ignored_names_;
 };
 
+// 自定义 Recordable 包装器：用于拦截 Span 的属性设置，支持手动标记丢弃 Span
+class WrapperRecordable : public opentelemetry::sdk::trace::Recordable
+{
+public:
+    explicit WrapperRecordable(std::unique_ptr<opentelemetry::sdk::trace::Recordable> inner)
+        : inner_(std::move(inner))
+    {
+    }
+
+    void SetIdentity(const opentelemetry::trace::SpanContext &span_context,
+                     opentelemetry::trace::SpanId parent_span_id) noexcept override
+    {
+        inner_->SetIdentity(span_context, parent_span_id);
+    }
+
+    void SetAttribute(opentelemetry::nostd::string_view key,
+                      const opentelemetry::common::AttributeValue &value) noexcept override
+    {
+        // 拦截 "manual_drop" 属性，如果设置了该属性，则标记为需要丢弃
+        if (key == "manual_drop")
+        {
+            should_drop_ = true;
+        }
+        inner_->SetAttribute(key, value);
+    }
+
+    void AddEvent(opentelemetry::nostd::string_view name,
+                  opentelemetry::common::SystemTimestamp timestamp,
+                  const opentelemetry::common::KeyValueIterable &attributes) noexcept override
+    {
+        inner_->AddEvent(name, timestamp, attributes);
+    }
+
+    void AddLink(const opentelemetry::trace::SpanContext &span_context,
+                 const opentelemetry::common::KeyValueIterable &attributes) noexcept override
+    {
+        inner_->AddLink(span_context, attributes);
+    }
+
+    void SetStatus(opentelemetry::trace::StatusCode code,
+                   opentelemetry::nostd::string_view description) noexcept override
+    {
+        inner_->SetStatus(code, description);
+    }
+
+    void SetName(opentelemetry::nostd::string_view name) noexcept override
+    {
+        inner_->SetName(name);
+    }
+
+    void SetTraceFlags(opentelemetry::trace::TraceFlags flags) noexcept override
+    {
+        inner_->SetTraceFlags(flags);
+    }
+
+    void SetSpanKind(opentelemetry::trace::SpanKind span_kind) noexcept override
+    {
+        inner_->SetSpanKind(span_kind);
+    }
+
+    void SetResource(const opentelemetry::sdk::resource::Resource &resource) noexcept override
+    {
+        inner_->SetResource(resource);
+    }
+
+    void SetStartTime(opentelemetry::common::SystemTimestamp start_time) noexcept override
+    {
+        inner_->SetStartTime(start_time);
+    }
+
+    void SetDuration(std::chrono::nanoseconds duration) noexcept override
+    {
+        inner_->SetDuration(duration);
+    }
+
+    void SetInstrumentationScope(
+        const opentelemetry::sdk::instrumentationscope::InstrumentationScope &instrumentation_scope) noexcept override
+    {
+        inner_->SetInstrumentationScope(instrumentation_scope);
+    }
+
+    explicit operator opentelemetry::sdk::trace::SpanData *() const override
+    {
+        return inner_->operator opentelemetry::sdk::trace::SpanData *();
+    }
+
+    std::unique_ptr<opentelemetry::sdk::trace::Recordable> ReleaseInner()
+    {
+        return std::move(inner_);
+    }
+
+    bool ShouldDrop() const
+    {
+        return should_drop_;
+    }
+
+private:
+    std::unique_ptr<opentelemetry::sdk::trace::Recordable> inner_;
+    bool should_drop_ = false;
+};
+
+// 自定义 Exporter 包装器：在导出前检查 Span 是否被标记为丢弃
+class FilteringExporter : public opentelemetry::sdk::trace::SpanExporter
+{
+public:
+    explicit FilteringExporter(std::unique_ptr<opentelemetry::sdk::trace::SpanExporter> exporter)
+        : exporter_(std::move(exporter))
+    {
+    }
+
+    std::unique_ptr<opentelemetry::sdk::trace::Recordable> MakeRecordable() noexcept override
+    {
+        return std::make_unique<WrapperRecordable>(exporter_->MakeRecordable());
+    }
+
+    opentelemetry::sdk::common::ExportResult Export(
+        const opentelemetry::nostd::span<std::unique_ptr<opentelemetry::sdk::trace::Recordable>> &spans) noexcept override
+    {
+        std::vector<std::unique_ptr<opentelemetry::sdk::trace::Recordable>> valid_spans;
+        valid_spans.reserve(spans.size());
+
+        // 遍历所有待导出的 Span，过滤掉被标记为丢弃的 Span
+        for (auto &span : spans)
+        {
+            auto wrapper = static_cast<WrapperRecordable *>(span.get());
+            if (!wrapper->ShouldDrop())
+            {
+                // 如果不需要丢弃，则提取内部真实的 Recordable 对象
+                valid_spans.push_back(wrapper->ReleaseInner());
+            }
+        }
+
+        // 如果没有有效 Span，直接返回成功
+        if (valid_spans.empty())
+        {
+            return opentelemetry::sdk::common::ExportResult::kSuccess;
+        }
+
+        // 将过滤后的有效 Span 传递给真实的 Exporter
+        return exporter_->Export(opentelemetry::nostd::span<std::unique_ptr<opentelemetry::sdk::trace::Recordable>>(
+            valid_spans.data(), valid_spans.size()));
+    }
+
+    bool Shutdown(std::chrono::microseconds timeout = std::chrono::microseconds::max()) noexcept override
+    {
+        return exporter_->Shutdown(timeout);
+    }
+
+private:
+    std::unique_ptr<opentelemetry::sdk::trace::SpanExporter> exporter_;
+};
 
 void InitTracer(const TelemetryConfig& config)
 {
     // 1. 创建 Exporter: 负责将 Trace 数据发送到后端 (如 Jaeger, Zipkin, OTel Collector)
     // 这里使用 OTLP gRPC Exporter，它是 OpenTelemetry 的标准协议
+    // 并使用 FilteringExporter 进行包装，以支持在导出阶段过滤掉被标记为丢弃的 Span
     opentelemetry::exporter::otlp::OtlpGrpcExporterOptions opts;
     opts.endpoint = config.endpoint; 
 
     auto exporter = otlp::OtlpGrpcExporterFactory::Create(opts);
+    auto filtering_exporter = std::unique_ptr<opentelemetry::sdk::trace::SpanExporter>(new FilteringExporter(std::move(exporter)));
 
     // 2. 创建 Processor: 负责处理 Span (如批量发送，减少网络开销)
     // BatchSpanProcessor 会在后台缓冲 Span，并批量发送给 Exporter
     trace_sdk::BatchSpanProcessorOptions options{};
-    auto processor = trace_sdk::BatchSpanProcessorFactory::Create(std::move(exporter), options);
+    auto processor = trace_sdk::BatchSpanProcessorFactory::Create(std::move(filtering_exporter), options);
 
     std::vector<std::unique_ptr<opentelemetry::sdk::trace::SpanProcessor>> processors;
     processors.push_back(std::move(processor));
@@ -104,6 +259,7 @@ void InitTracer(const TelemetryConfig& config)
     auto resource = opentelemetry::sdk::resource::Resource::Create(attributes);
 
     // 4. 创建 TracerProvider: 管理 Tracer 的生命周期和配置
+    // 使用自定义的 IgnoreSampler，根据配置的忽略列表在 Span 创建前进行过滤
     auto sampler = std::make_unique<IgnoreSampler>(config.ignored_spans);
     std::unique_ptr<opentelemetry::sdk::trace::TracerContext> context =
         opentelemetry::sdk::trace::TracerContextFactory::Create(std::move(processors), resource, std::move(sampler));
@@ -152,6 +308,11 @@ class Trace::Impl
         span_->End();
     }
 
+    auto discard() -> void
+    {
+        span_->SetAttribute("manual_drop", true);
+    }
+
     explicit Impl(const std::string &str)
         // trace::Scope 是 RAII 对象且不可移动，必须在初始化列表中构造
         // StartSpan: 开始一个新的 Span
@@ -179,6 +340,11 @@ auto Trace::addEvent(const std::string &name) -> void
 auto Trace::after() -> void
 { // NOLINT
     impl_->after();
+}
+
+auto Trace::discard() -> void
+{
+    impl_->discard();
 }
 
 Trace::Trace(const std::string &str) : impl_(std::make_unique<Impl>(str))
