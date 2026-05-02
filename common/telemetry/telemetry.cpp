@@ -377,6 +377,8 @@ void InitTracer(const TelemetryConfig& config)
     // BatchSpanProcessor 会在后台缓冲 Span，并批量发送给 Exporter
     // 使用 SubtreeDiscardSpanProcessor 包装 BatchSpanProcessor，以支持整棵树的丢弃逻辑
     trace_sdk::BatchSpanProcessorOptions options{};
+    // options.max_queue_size = 10000;                                // 调大队列以容纳测试的所有 Span
+    // options.schedule_delay_millis = std::chrono::milliseconds(100); // 加快发送频率
     auto batch_processor = trace_sdk::BatchSpanProcessorFactory::Create(std::move(filtering_exporter), options);
     auto processor = std::make_unique<SubtreeDiscardSpanProcessor>(std::move(batch_processor));
 
