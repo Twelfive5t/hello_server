@@ -21,6 +21,9 @@
 #include <ctime>
 #include <sstream>
 #include <iomanip>
+#include <set>
+#include <map>
+#include <mutex>
 
 namespace trace = opentelemetry::trace;
 namespace trace_sdk = opentelemetry::sdk::trace;
@@ -80,6 +83,8 @@ public:
     void SetIdentity(const opentelemetry::trace::SpanContext &span_context,
                      opentelemetry::trace::SpanId parent_span_id) noexcept override
     {
+        span_context_ = span_context;
+        parent_span_id_ = parent_span_id;
         inner_->SetIdentity(span_context, parent_span_id);
     }
 
@@ -164,9 +169,146 @@ public:
         return should_drop_;
     }
 
+    opentelemetry::trace::SpanId GetSpanId() const
+    {
+        return span_context_.span_id();
+    }
+
+    opentelemetry::trace::SpanId GetParentSpanId() const
+    {
+        return parent_span_id_;
+    }
+
 private:
     std::unique_ptr<opentelemetry::sdk::trace::Recordable> inner_;
     bool should_drop_ = false;
+    opentelemetry::trace::SpanContext span_context_ = opentelemetry::trace::SpanContext::GetInvalid();
+    opentelemetry::trace::SpanId parent_span_id_;
+};
+
+// 自定义 SpanProcessor：用于处理整棵 Span 树的丢弃逻辑
+// 如果父 Span 被标记为丢弃，则其所有子 Span 也应该被丢弃
+class SubtreeDiscardSpanProcessor : public opentelemetry::sdk::trace::SpanProcessor
+{
+public:
+    explicit SubtreeDiscardSpanProcessor(std::unique_ptr<opentelemetry::sdk::trace::SpanProcessor> next)
+        : next_(std::move(next))
+    {
+    }
+
+    std::unique_ptr<opentelemetry::sdk::trace::Recordable> MakeRecordable() noexcept override
+    {
+        return next_->MakeRecordable();
+    }
+
+    // Span 开始时调用：记录活跃的 Span ID
+    void OnStart(opentelemetry::sdk::trace::Recordable &recordable,
+                 const opentelemetry::trace::SpanContext &parent_context) noexcept override
+    {
+        next_->OnStart(recordable, parent_context);
+
+        auto& wrapper = static_cast<WrapperRecordable&>(recordable);
+        std::string span_id = ToHex(wrapper.GetSpanId());
+        
+        std::lock_guard<std::mutex> lock(mutex_);
+        active_spans_.insert(span_id);
+    }
+
+    // Span 结束时调用：决定是立即导出、缓存等待父 Span 决定、还是丢弃
+    void OnEnd(std::unique_ptr<opentelemetry::sdk::trace::Recordable> &&recordable) noexcept override
+    {
+        auto& wrapper = static_cast<WrapperRecordable&>(*recordable);
+        
+        std::string span_id = ToHex(wrapper.GetSpanId());
+        std::string parent_span_id = ToHex(wrapper.GetParentSpanId());
+
+        bool should_drop = wrapper.ShouldDrop();
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        active_spans_.erase(span_id);
+
+        // 如果当前 Span 被标记为丢弃，则丢弃它及其所有已缓存的子 Span
+        if (should_drop)
+        {
+            DropSubtree(span_id);
+            return;
+        }
+
+        // 如果父 Span 还在活跃列表中，说明当前 Span 是某个未完成 Span 的子节点
+        // 将其缓存起来，等待父 Span 结束时一起处理
+        if (active_spans_.count(parent_span_id))
+        {
+            pending_children_[parent_span_id].push_back(std::move(recordable));
+        }
+        else
+        {
+            // 如果没有父 Span 或父 Span 已经结束（不活跃），则直接导出当前 Span
+            // 并递归导出其所有缓存的子 Span
+            next_->OnEnd(std::move(recordable));
+            ExportSubtree(span_id);
+        }
+    }
+
+    bool ForceFlush(std::chrono::microseconds timeout = std::chrono::microseconds::max()) noexcept override
+    {
+        return next_->ForceFlush(timeout);
+    }
+
+    bool Shutdown(std::chrono::microseconds timeout = std::chrono::microseconds::max()) noexcept override
+    {
+        return next_->Shutdown(timeout);
+    }
+
+private:
+    std::unique_ptr<opentelemetry::sdk::trace::SpanProcessor> next_;
+    std::mutex mutex_;
+    std::set<std::string> active_spans_;
+    std::map<std::string, std::vector<std::unique_ptr<opentelemetry::sdk::trace::Recordable>>> pending_children_;
+
+    std::string ToHex(const opentelemetry::trace::SpanId &span_id)
+    {
+        char buf[16];
+        span_id.ToLowerBase16(buf);
+        return std::string(buf, 16);
+    }
+
+    // 递归丢弃指定 Span ID 的所有子 Span
+    void DropSubtree(const std::string &span_id)
+    {
+        auto it = pending_children_.find(span_id);
+        if (it != pending_children_.end())
+        {
+            for (auto &child : it->second)
+            {
+                auto& wrapper = static_cast<WrapperRecordable&>(*child);
+                DropSubtree(ToHex(wrapper.GetSpanId()));
+            }
+            pending_children_.erase(it);
+        }
+    }
+
+    // 递归导出指定 Span ID 的所有子 Span
+    void ExportSubtree(const std::string &span_id)
+    {
+        auto it = pending_children_.find(span_id);
+        if (it != pending_children_.end())
+        {
+            auto children = std::move(it->second);
+            pending_children_.erase(it);
+
+            for (auto &child : children)
+            {
+                auto& wrapper = static_cast<WrapperRecordable&>(*child);
+                std::string child_id = ToHex(wrapper.GetSpanId());
+                
+                next_->OnEnd(std::move(child));
+                
+                if (!child_id.empty()) {
+                    ExportSubtree(child_id);
+                }
+            }
+        }
+    }
 };
 
 // 自定义 Exporter 包装器：在导出前检查 Span 是否被标记为丢弃
@@ -233,8 +375,10 @@ void InitTracer(const TelemetryConfig& config)
 
     // 2. 创建 Processor: 负责处理 Span (如批量发送，减少网络开销)
     // BatchSpanProcessor 会在后台缓冲 Span，并批量发送给 Exporter
+    // 使用 SubtreeDiscardSpanProcessor 包装 BatchSpanProcessor，以支持整棵树的丢弃逻辑
     trace_sdk::BatchSpanProcessorOptions options{};
-    auto processor = trace_sdk::BatchSpanProcessorFactory::Create(std::move(filtering_exporter), options);
+    auto batch_processor = trace_sdk::BatchSpanProcessorFactory::Create(std::move(filtering_exporter), options);
+    auto processor = std::make_unique<SubtreeDiscardSpanProcessor>(std::move(batch_processor));
 
     std::vector<std::unique_ptr<opentelemetry::sdk::trace::SpanProcessor>> processors;
     processors.push_back(std::move(processor));
