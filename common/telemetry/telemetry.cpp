@@ -10,6 +10,7 @@
 #include "opentelemetry/sdk/trace/tracer_context_factory.h"
 #include "opentelemetry/sdk/trace/tracer_provider.h"
 #include "opentelemetry/sdk/trace/tracer_provider_factory.h"
+#include "opentelemetry/sdk/trace/sampler.h"
 #include "opentelemetry/trace/propagation/http_trace_context.h"
 #include "opentelemetry/trace/provider.h"
 #include <opentelemetry/sdk/trace/batch_span_processor_factory.h>
@@ -24,6 +25,47 @@ namespace trace_sdk = opentelemetry::sdk::trace;
 namespace otlp = opentelemetry::exporter::otlp;
 namespace nostd = opentelemetry::nostd;
 namespace resource = opentelemetry::sdk::resource;
+
+// 自定义采样器：用于过滤掉不需要的 Span (例如高频但无关紧要的函数)
+class IgnoreSampler : public opentelemetry::sdk::trace::Sampler
+{
+  public:
+    explicit IgnoreSampler(std::vector<std::string> ignored_names) : ignored_names_(std::move(ignored_names))
+    {
+    }
+
+    // 采样决策逻辑：在 Span 创建前调用
+    opentelemetry::sdk::trace::SamplingResult ShouldSample(
+        const opentelemetry::trace::SpanContext & /*parent_context*/,
+        opentelemetry::trace::TraceId /*trace_id*/,
+        opentelemetry::nostd::string_view name,
+        opentelemetry::trace::SpanKind /*span_kind*/,
+        const opentelemetry::common::KeyValueIterable & /*attributes*/,
+        const opentelemetry::trace::SpanContextKeyValueIterable & /*links*/) noexcept override
+    {
+        std::string name_str(name.data(), name.size());
+        // 遍历过滤列表，如果 Span 名称包含任意一个关键词，则丢弃
+        for (const auto &ignored : ignored_names_)
+        {
+            if (name_str.find(ignored) != std::string::npos)
+            {
+                // Decision::DROP 表示完全丢弃该 Span，不记录也不导出
+                return {opentelemetry::sdk::trace::Decision::DROP, {}, {}};
+            }
+        }
+        // 默认行为：记录并采样 (RECORD_AND_SAMPLE)
+        return {opentelemetry::sdk::trace::Decision::RECORD_AND_SAMPLE, {}, {}};
+    }
+
+    opentelemetry::nostd::string_view GetDescription() const noexcept override
+    {
+        return "IgnoreSampler";
+    }
+
+  private:
+    std::vector<std::string> ignored_names_;
+};
+
 
 void InitTracer(const TelemetryConfig& config)
 {
@@ -62,8 +104,9 @@ void InitTracer(const TelemetryConfig& config)
     auto resource = opentelemetry::sdk::resource::Resource::Create(attributes);
 
     // 4. 创建 TracerProvider: 管理 Tracer 的生命周期和配置
+    auto sampler = std::make_unique<IgnoreSampler>(config.ignored_spans);
     std::unique_ptr<opentelemetry::sdk::trace::TracerContext> context =
-        opentelemetry::sdk::trace::TracerContextFactory::Create(std::move(processors), resource);
+        opentelemetry::sdk::trace::TracerContextFactory::Create(std::move(processors), resource, std::move(sampler));
     std::shared_ptr<opentelemetry::trace::TracerProvider> provider =
         trace_sdk::TracerProviderFactory::Create(std::move(context));
 

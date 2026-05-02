@@ -2,9 +2,11 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #define FILE_LINE (__FILE__ + std::string(":") + std::to_string(__LINE__))
 #define FILE_LINE_FUNC (__FILE__ + std::string(":") + std::to_string(__LINE__) + ", " + std::string(__FUNCTION__))
+
 #define TRACE_POINT Trace trace_point_instance(FILE_LINE_FUNC);
 #define TRACE_POINT_ADD trace_point_instance.addEvent(FILE_LINE_FUNC);
 #define TRACE_POINT_ADD_MSG(msg) trace_point_instance.addEvent(msg);
@@ -15,6 +17,7 @@ struct TelemetryConfig {
     std::string endpoint = "localhost:4317";
     std::string version = "0.0.1";
     std::string environment = "test";
+    std::vector<std::string> ignored_spans = {};
 };
 
 // 初始化 Tracer，支持传入配置
