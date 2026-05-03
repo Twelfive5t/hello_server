@@ -21,19 +21,55 @@ services:
       retries: 3
       start_period: 3s
 
-  jaeger:
-    image: docker.io/jaegertracing/all-in-one:latest
-    container_name: jaeger
+  alloy:
+    image: grafana/alloy:latest
+    container_name: alloy
+    privileged: true
+    volumes:
+      - ./config/alloy:/etc/alloy
+    ports:
+      - "4317:4317"     # OTLP gRPC (面向应用)
+      - "4318:4318"     # OTLP HTTP (面向应用)
+      - "12345:12345"   # Alloy UI
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    depends_on:
+      - tempo
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:latest
+    container_name: tempo
+    privileged: true
+    volumes:
+      - ./config/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    ports:
+      - "3200:3200"
+    command:
+      - -config.file=/etc/tempo/tempo.yaml
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    privileged: true
     environment:
       - TZ=CST-8
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+      - grafana_data:/var/lib/grafana
     ports:
-      - "16686:16686"   # Jaeger UI
-      - "4317:4317"     # OTLP gRPC
-      - "4318:4318"     # OTLP HTTP
-    command:
-      - "--memory.max-traces=50000"
-    deploy:
-      resources:
-        limits:
-          memory: 1000M
+      - "3000:3000"     # Grafana UI
+    depends_on:
+      - tempo
     restart: unless-stopped
+
+volumes:
+  tempo_data:
+  grafana_data:
