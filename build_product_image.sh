@@ -2,7 +2,11 @@
 
 . ./.env
 
+cp .env products/bin$SERVER_VERSION/.env
+cp start_service.sh products/bin$SERVER_VERSION/start_service.sh
+cp stop_service.sh products/bin$SERVER_VERSION/stop_service.sh
 cp package/Dockerfile products/bin$SERVER_VERSION/Dockerfile
+cp docker-compose.yaml products/bin$SERVER_VERSION/docker-compose.yaml
 
 cd products/bin$SERVER_VERSION
 
