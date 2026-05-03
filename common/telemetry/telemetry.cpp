@@ -1,6 +1,7 @@
 #include "telemetry.hpp"
 
 #include "opentelemetry/context/propagation/global_propagator.h"
+#include "opentelemetry/context/runtime_context.h"
 #include "opentelemetry/exporters/otlp/otlp_grpc_exporter_factory.h"
 #include "opentelemetry/sdk/resource/semantic_conventions.h"
 #include "opentelemetry/sdk/trace/batch_span_processor.h"
@@ -14,6 +15,7 @@
 #include "opentelemetry/sdk/trace/tracer_context_factory.h"
 #include "opentelemetry/sdk/trace/tracer_provider.h"
 #include "opentelemetry/sdk/trace/tracer_provider_factory.h"
+#include "opentelemetry/trace/context.h"
 #include "opentelemetry/trace/propagation/http_trace_context.h"
 #include "opentelemetry/trace/provider.h"
 
@@ -489,6 +491,60 @@ void cleanup_tracer()
     trace::Provider::SetTracerProvider(none);
 }
 
+// ---------------------------------------------------------------------------
+// 共用内部载体辅助类：将 std::map 适配为 OTel TextMapCarrier
+// ---------------------------------------------------------------------------
+namespace
+{
+struct map_text_carrier : public opentelemetry::context::propagation::TextMapCarrier {
+    const std::map<std::string, std::string> *read_map = nullptr;
+    std::map<std::string, std::string> *write_map = nullptr;
+
+    explicit map_text_carrier(const std::map<std::string, std::string> &m) : read_map(&m)
+    {
+    }
+    explicit map_text_carrier(std::map<std::string, std::string> &m) : write_map(&m)
+    {
+    }
+
+    [[nodiscard]] opentelemetry::nostd::string_view Get(opentelemetry::nostd::string_view key
+    ) const noexcept override
+    {
+        if (read_map == nullptr) {
+            return "";
+        }
+        auto it = read_map->find(std::string(key));
+        if (it != read_map->end()) {
+            return it->second;
+        }
+        return "";
+    }
+
+    void Set(
+            opentelemetry::nostd::string_view key,
+            opentelemetry::nostd::string_view value
+    ) noexcept override
+    {
+        if (write_map != nullptr) {
+            (*write_map)[std::string(key)] = std::string(value);
+        }
+    }
+};
+} // namespace
+
+// ---------------------------------------------------------------------------
+// get_trace_headers——将当前 context 序列化为 W3C header map
+// ---------------------------------------------------------------------------
+auto get_trace_headers() -> std::map<std::string, std::string>
+{
+    std::map<std::string, std::string> result;
+    auto propagator =
+            opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+    map_text_carrier mc(result);
+    propagator->Inject(mc, opentelemetry::context::RuntimeContext::GetCurrent());
+    return result;
+}
+
 namespace
 {
 auto get_tracer() -> nostd::shared_ptr<trace::Tracer>
@@ -496,16 +552,37 @@ auto get_tracer() -> nostd::shared_ptr<trace::Tracer>
     auto provider = trace::Provider::GetTracerProvider();
     return provider->GetTracer("telemetry_demo", OPENTELEMETRY_SDK_VERSION);
 }
+
+auto to_otel_kind(span_kind kind) -> opentelemetry::trace::SpanKind
+{
+    switch (kind) {
+    case span_kind::CLIENT:
+        return opentelemetry::trace::SpanKind::kClient;
+    case span_kind::SERVER:
+        return opentelemetry::trace::SpanKind::kServer;
+    default:
+        return opentelemetry::trace::SpanKind::kInternal;
+    }
+}
 } // namespace
 
 class trace_span::impl
 {
 public:
-    explicit impl(const std::string &str)
+    explicit impl(const std::string &str, opentelemetry::trace::SpanKind kind)
         // trace::Scope 是 RAII 对象且不可移动，必须在初始化列表中构造
         // StartSpan: 开始一个新的 Span
         // WithActiveSpan: 将该 Span 设为当前线程的活跃 Span，作用域结束时自动恢复上一个 Span
-        : span_(get_tracer()->StartSpan(str)),
+        : span_(make_root_span(str, kind)),
+          outer_scope_(get_tracer()->WithActiveSpan(span_)) // NOLINT
+    {
+        before(str);
+    }
+
+    impl(const std::string &str,
+         const std::map<std::string, std::string> &carrier,
+         opentelemetry::trace::SpanKind kind)
+        : span_(make_span_from_carrier(str, carrier, kind)),
           outer_scope_(get_tracer()->WithActiveSpan(span_)) // NOLINT
     {
         before(str);
@@ -540,6 +617,32 @@ public:
     }
 
 private:
+    static auto make_root_span(const std::string &str, opentelemetry::trace::SpanKind kind)
+            -> nostd::shared_ptr<opentelemetry::trace::Span>
+    {
+        opentelemetry::trace::StartSpanOptions options;
+        options.kind = kind;
+        return get_tracer()->StartSpan(str, {}, options);
+    }
+
+    static auto make_span_from_carrier(
+            const std::string &str,
+            const std::map<std::string, std::string> &carrier,
+            opentelemetry::trace::SpanKind kind
+    ) -> nostd::shared_ptr<opentelemetry::trace::Span>
+    {
+        auto propagator =
+                opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+        map_text_carrier mc(carrier);
+        auto current_ctx = opentelemetry::context::RuntimeContext::GetCurrent();
+        auto remote_ctx = propagator->Extract(mc, current_ctx);
+        auto parent_span = opentelemetry::trace::GetSpan(remote_ctx);
+        opentelemetry::trace::StartSpanOptions options;
+        options.parent = parent_span->GetContext();
+        options.kind = kind;
+        return get_tracer()->StartSpan(str, {}, options);
+    }
+
     nostd::shared_ptr<opentelemetry::trace::Span> span_;
     trace::Scope outer_scope_;
 };
@@ -564,7 +667,16 @@ auto trace_span::discard() -> void
     impl_->discard();
 }
 
-trace_span::trace_span(const std::string &str) : impl_(std::make_unique<impl>(str))
+trace_span::trace_span(const std::string &str, span_kind kind)
+    : impl_(std::make_unique<impl>(str, to_otel_kind(kind)))
+{
+}
+trace_span::trace_span(
+        const std::string &str,
+        const std::map<std::string, std::string> &carrier,
+        span_kind kind
+)
+    : impl_(std::make_unique<impl>(str, carrier, to_otel_kind(kind)))
 {
 }
 trace_span::~trace_span() = default;

@@ -1,9 +1,9 @@
 #include "logger/logger.hpp"
 #include "routes/routes.hpp"
+#include "telemetry/telemetry.hpp"
 
 #include <exception>
 #include <grpcpp/grpcpp.h>
-#include <stdexcept>
 
 namespace
 {
@@ -11,6 +11,8 @@ namespace
 void run_server()
 {
     const std::string server_address = "0.0.0.0:50051";
+
+    init_tracer({ .service_name = "hello_server", .endpoint = "localhost:4317" });
 
     spdlog::info("Initializing gRPC ServerBuilder...");
 
@@ -40,6 +42,7 @@ void run_server()
     server->Wait();
 
     spdlog::info("Server shut down.");
+    cleanup_tracer();
 }
 
 } // namespace

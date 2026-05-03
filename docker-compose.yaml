@@ -14,3 +14,20 @@ services:
     command: ./main
     ports:
       - "50051:50051"
+
+  jaeger:
+    image: docker.io/jaegertracing/all-in-one:latest
+    container_name: jaeger
+    environment:
+      - TZ=CST-8
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
+    command:
+      - "--memory.max-traces=50000"
+    deploy:
+      resources:
+        limits:
+          memory: 1000M
+    restart: unless-stopped
