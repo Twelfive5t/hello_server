@@ -20,6 +20,16 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -y --no-ins
     && echo "Asia/Shanghai" > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
 
+# Download grpc_health_probe for Docker healthcheck
+RUN if [ "$(uname -m)" = "aarch64" ]; then \
+        GRPC_URL=https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.35/grpc_health_probe-linux-arm; \
+    elif [ "$(uname -m)" = "x86_64" ]; then \
+        GRPC_URL=https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.35/grpc_health_probe-linux-amd64; \
+    fi && wget $GRPC_URL \
+        -O grpc_health_probe --no-check-certificate && \
+    chmod +x grpc_health_probe && \
+    mv grpc_health_probe /usr/local/bin/grpc_health_probe
+
 WORKDIR /workspace
 
 CMD ["bash"]

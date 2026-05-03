@@ -3,7 +3,9 @@
 #include "telemetry/telemetry.hpp"
 
 #include <exception>
+#include <grpcpp/ext/proto_server_reflection_plugin.h>
 #include <grpcpp/grpcpp.h>
+#include <grpcpp/health_check_service_interface.h>
 
 namespace
 {
@@ -13,6 +15,9 @@ void run_server()
     const std::string server_address = "0.0.0.0:50051";
 
     init_tracer({ .service_name = "hello_server", .endpoint = "localhost:4317" });
+
+    grpc::EnableDefaultHealthCheckService(true);
+    grpc::reflection::InitProtoReflectionServerBuilderPlugin();
 
     spdlog::info("Initializing gRPC ServerBuilder...");
 
