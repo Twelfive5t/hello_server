@@ -23,6 +23,10 @@ fi
 # 在 Docker 中构建项目
 docker run -it --privileged --rm \
     -v $(pwd):/workspace \
+    -v /usr/bin/docker:/usr/bin/docker \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v /usr/libexec/docker/cli-plugins:/usr/libexec/docker/cli-plugins \
+    -v ~/.conan2:/root/.conan2 \
     $BUILDER_IMAGE \
     bash -c "./build.sh $PRESET"
     # /bin/sh -c "while sleep 1000; do :; done"
