@@ -10,10 +10,28 @@ datasources:
     jsonData:
       tracesToLogsV2:
         datasourceUid: loki
+        spanStartTimeShift: '-5m'
+        spanEndTimeShift: '5m'
+        tags:
+          - key: service.name
+            value: service_name
+        filterByTraceID: false
+        filterBySpanID: false
+        customQuery: false
+      tracesToMetrics:
+        datasourceUid: prometheus
+        spanStartTimeShift: '-5m'
+        spanEndTimeShift: '5m'
+        tags:
+          - key: service.name
+            value: service_name
+        queries:
+          - name: Request rate
+            query: sum(rate(rpc_server_requests_total{$$__tags}[5m]))
       nodeGraph:
         enabled: true
       serviceMap:
-        datasourceUid: ''
+        datasourceUid: 'prometheus'
       search:
         hide: false
       lokiSearch:

@@ -3,6 +3,13 @@
 #include "opentelemetry/context/propagation/global_propagator.h"
 #include "opentelemetry/context/runtime_context.h"
 #include "opentelemetry/exporters/otlp/otlp_grpc_exporter_factory.h"
+#include "opentelemetry/exporters/otlp/otlp_grpc_metric_exporter_factory.h"
+#include "opentelemetry/exporters/otlp/otlp_grpc_metric_exporter_options.h"
+#include "opentelemetry/metrics/noop.h"
+#include "opentelemetry/metrics/provider.h"
+#include "opentelemetry/sdk/metrics/export/periodic_exporting_metric_reader_factory.h"
+#include "opentelemetry/sdk/metrics/export/periodic_exporting_metric_reader_options.h"
+#include "opentelemetry/sdk/metrics/meter_provider.h"
 #include "opentelemetry/sdk/resource/semantic_conventions.h"
 #include "opentelemetry/sdk/trace/batch_span_processor.h"
 #include "opentelemetry/sdk/trace/batch_span_processor_factory.h"
@@ -32,9 +39,25 @@
 
 namespace trace = opentelemetry::trace;
 namespace trace_sdk = opentelemetry::sdk::trace;
+namespace metrics = opentelemetry::metrics;
+namespace metrics_sdk = opentelemetry::sdk::metrics;
 namespace otlp = opentelemetry::exporter::otlp;
 namespace nostd = opentelemetry::nostd;
 namespace resource = opentelemetry::sdk::resource;
+
+namespace
+{
+
+constexpr auto K_METRIC_EXPORT_INTERVAL = std::chrono::milliseconds(15000);
+constexpr auto K_METRIC_EXPORT_TIMEOUT = std::chrono::milliseconds(5000);
+
+auto global_meter_provider() -> std::shared_ptr<metrics_sdk::MeterProvider> &
+{
+    static std::shared_ptr<metrics_sdk::MeterProvider> provider;
+    return provider;
+}
+
+} // namespace
 
 // 自定义采样器：用于过滤掉不需要的 Span (例如高频但无关紧要的函数)
 class ignore_sampler : public opentelemetry::sdk::trace::Sampler
@@ -475,6 +498,29 @@ void init_tracer(const telemetry_config &config)
     // 5. 设置全局 TracerProvider: 让后续代码可以通过 Provider::GetTracerProvider() 获取
     trace::Provider::SetTracerProvider(provider);
 
+    opentelemetry::exporter::otlp::OtlpGrpcMetricExporterOptions metric_options;
+    metric_options.endpoint = config.endpoint;
+
+    auto metric_exporter = otlp::OtlpGrpcMetricExporterFactory::Create(metric_options);
+    metrics_sdk::PeriodicExportingMetricReaderOptions metric_reader_options{};
+    metric_reader_options.export_interval_millis = K_METRIC_EXPORT_INTERVAL;
+    metric_reader_options.export_timeout_millis = K_METRIC_EXPORT_TIMEOUT;
+
+    auto metric_reader = metrics_sdk::PeriodicExportingMetricReaderFactory::Create(
+            std::move(metric_exporter), metric_reader_options
+    );
+
+    auto meter_provider = std::make_shared<metrics_sdk::MeterProvider>(
+            std::make_unique<metrics_sdk::ViewRegistry>(), resource
+    );
+    meter_provider->AddMetricReader(
+            std::shared_ptr<metrics_sdk::MetricReader>(std::move(metric_reader))
+    );
+    global_meter_provider() = meter_provider;
+    metrics::Provider::SetMeterProvider(
+            std::static_pointer_cast<metrics::MeterProvider>(meter_provider)
+    );
+
     // 6. 设置全局 Propagator: 负责跨进程/跨服务传递 Trace Context (如 TraceId, SpanId)
     // HttpTraceContext 支持 W3C Trace Context 标准，用于在 HTTP Header 中传递上下文
     opentelemetry::context::propagation::GlobalTextMapPropagator::SetGlobalPropagator(
@@ -487,6 +533,16 @@ void init_tracer(const telemetry_config &config)
 
 void cleanup_tracer()
 {
+    if (global_meter_provider()) {
+        global_meter_provider()->ForceFlush();
+        global_meter_provider()->Shutdown();
+        global_meter_provider().reset();
+    }
+
+    metrics::Provider::SetMeterProvider(
+            opentelemetry::nostd::shared_ptr<metrics::MeterProvider>(new metrics::NoopMeterProvider)
+    );
+
     std::shared_ptr<trace::TracerProvider> none;
     trace::Provider::SetTracerProvider(none);
 }

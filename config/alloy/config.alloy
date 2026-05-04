@@ -1,5 +1,7 @@
 // Grafana Alloy configuration
-// Receives OTLP traces from the application and forwards to Grafana Tempo.
+// Receives OTLP traces and metrics from the application.
+// Traces are forwarded to Grafana Tempo and metrics are converted to
+// Prometheus format before being remote-written to Prometheus.
 // Also tails spdlog log files and forwards them to Loki.
 
 otelcol.receiver.otlp "default" {
@@ -10,7 +12,33 @@ otelcol.receiver.otlp "default" {
     endpoint = "0.0.0.0:4318"
   }
   output {
+    metrics = [otelcol.processor.batch.metrics.input]
     traces = [otelcol.exporter.otlp.tempo.input]
+  }
+}
+
+otelcol.processor.batch "metrics" {
+  output {
+    metrics = [otelcol.exporter.prometheus.metrics.input]
+  }
+}
+
+otelcol.exporter.prometheus "metrics" {
+  include_target_info = true
+  resource_to_telemetry_conversion = true
+  forward_to = [prometheus.remote_write.local.receiver]
+}
+
+prometheus.remote_write "local" {
+  external_labels = {
+    cluster = "local",
+    env     = "dev",
+  }
+
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+
+    send_exemplars = true
   }
 }
 

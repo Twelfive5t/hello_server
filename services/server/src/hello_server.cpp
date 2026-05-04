@@ -2,6 +2,7 @@
 #include "routes/routes.hpp"
 #include "telemetry/telemetry.hpp"
 
+#include <cstdlib>
 #include <exception>
 #include <grpcpp/ext/proto_server_reflection_plugin.h>
 #include <grpcpp/grpcpp.h>
@@ -10,11 +11,20 @@
 namespace
 {
 
+auto otlp_endpoint() -> std::string
+{
+    if (const char *endpoint = std::getenv("TELEMETRY_OTLP_ENDPOINT"); endpoint != nullptr) {
+        return endpoint;
+    }
+
+    return "localhost:4317";
+}
+
 void run_server()
 {
     const std::string server_address = "0.0.0.0:50051";
 
-    init_tracer({ .service_name = "hello_server", .endpoint = "localhost:4317" });
+    init_tracer({ .service_name = "hello_server", .endpoint = otlp_endpoint() });
 
     grpc::EnableDefaultHealthCheckService(true);
     grpc::reflection::InitProtoReflectionServerBuilderPlugin();

@@ -3,10 +3,10 @@ services:
   service:
     image: ${PRODUCT_IMAGE}
     restart: always
-    network_mode: "host"
     privileged: true
     environment:
       - LD_LIBRARY_PATH=/workspace
+      - TELEMETRY_OTLP_ENDPOINT=alloy:4317
     volumes:
       - /const:/const
       - /user_profiles:/user_profiles
@@ -15,6 +15,8 @@ services:
     command: ./main
     ports:
       - "50051:50051"
+    depends_on:
+      - alloy
     healthcheck:
       test: ["CMD", "grpc_health_probe", "--addr", "127.0.0.1:50051", "--service", ""]
       interval: 3s
@@ -40,8 +42,26 @@ services:
       - --storage.path=/var/lib/alloy
       - /etc/alloy/config.alloy
     depends_on:
+      - prometheus
       - tempo
       - loki
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.11.0
+    container_name: prometheus
+    privileged: true
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-remote-write-receiver
+      - --web.enable-lifecycle
+      - --enable-feature=exemplar-storage
     restart: unless-stopped
 
   loki:
@@ -85,6 +105,7 @@ services:
     ports:
       - "3000:3000"     # Grafana UI
     depends_on:
+      - prometheus
       - tempo
       - loki
     restart: unless-stopped
@@ -92,5 +113,6 @@ services:
 volumes:
   alloy_data:
   loki_data:
+  prometheus_data:
   tempo_data:
   grafana_data:
