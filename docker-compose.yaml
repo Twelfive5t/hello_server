@@ -11,6 +11,7 @@ services:
       - /const:/const
       - /user_profiles:/user_profiles
       - /corefile:/corefile
+      - /var/log/spdlog:/workspace/logs
     command: ./main
     ports:
       - "50051:50051"
