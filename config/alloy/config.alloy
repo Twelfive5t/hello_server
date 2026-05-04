@@ -1,5 +1,6 @@
 // Grafana Alloy configuration
 // Receives OTLP traces from the application and forwards to Grafana Tempo.
+// Also tails spdlog log files and forwards them to Loki.
 
 otelcol.receiver.otlp "default" {
   grpc {
@@ -19,5 +20,30 @@ otelcol.exporter.otlp "tempo" {
     tls {
       insecure = true
     }
+  }
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+loki.source.file "spdlog" {
+  targets = [
+    {
+      __path__         = "/var/log/spdlog/*.log*",
+      __path_exclude__ = "/var/log/spdlog/*.gz",
+      job              = "hello_server/spdlog",
+      service_name     = "hello_server",
+      source           = "spdlog",
+    },
+  ]
+  forward_to = [loki.write.local.receiver]
+
+  file_match {
+    enabled           = true
+    sync_period       = "10s"
+    ignore_older_than = "744h"
   }
 }

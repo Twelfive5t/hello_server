@@ -28,6 +28,8 @@ services:
     privileged: true
     volumes:
       - ./config/alloy:/etc/alloy
+      - /var/log/spdlog:/var/log/spdlog:ro
+      - alloy_data:/var/lib/alloy
     ports:
       - "4317:4317"     # OTLP gRPC (面向应用)
       - "4318:4318"     # OTLP HTTP (面向应用)
@@ -35,9 +37,24 @@ services:
     command:
       - run
       - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy
       - /etc/alloy/config.alloy
     depends_on:
       - tempo
+      - loki
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    privileged: true
+    volumes:
+      - ./config/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    command:
+      - -config.file=/etc/loki/local-config.yaml
     restart: unless-stopped
 
   tempo:
@@ -69,8 +86,11 @@ services:
       - "3000:3000"     # Grafana UI
     depends_on:
       - tempo
+      - loki
     restart: unless-stopped
 
 volumes:
+  alloy_data:
+  loki_data:
   tempo_data:
   grafana_data:
