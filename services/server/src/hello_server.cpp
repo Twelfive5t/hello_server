@@ -34,6 +34,8 @@ void run_server()
     // 1. 构建 builder
     grpc::ServerBuilder builder;
 
+    install_grpc_server_metrics(builder);
+
     // 2. 绑定端口（不安全模式）
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
 

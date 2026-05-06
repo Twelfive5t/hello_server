@@ -1,22 +1,12 @@
 #pragma once
 
+#include <grpcpp/server_builder.h>
+#include <grpcpp/server_context.h>
 #include <map>
 #include <memory>
+#include <source_location>
 #include <string>
 #include <vector>
-
-#define FILE_LINE (__FILE__ + std::string(":") + std::to_string(__LINE__))
-#define FILE_LINE_FUNC                                                                             \
-    (__FILE__ + std::string(":") + std::to_string(__LINE__) + ", " + std::string(__FUNCTION__))
-
-#define TRACE_POINT trace_span trace_point_instance(FILE_LINE_FUNC);
-#define TRACE_POINT_CLIENT trace_span trace_point_instance(FILE_LINE_FUNC, span_kind::CLIENT);
-#define TRACE_POINT_ADD trace_point_instance.add_event(FILE_LINE_FUNC);
-#define TRACE_POINT_ADD_MSG(msg) trace_point_instance.add_event(msg);
-#define TRACE_POINT_DISCARD trace_point_instance.discard();
-// 从传入的 key-value 载体（如 gRPC server metadata map）提取远端 Context，作为当前 Span 的父 Span
-#define TRACE_POINT_WITH_CONTEXT(carrier)                                                          \
-    trace_span trace_point_instance(FILE_LINE_FUNC, (carrier), span_kind::SERVER);
 
 // Span 类型，影响 Jaeger 等后端的可视化颜色和布局
 enum class span_kind : std::uint8_t { INTERNAL, CLIENT, SERVER };
@@ -43,11 +33,24 @@ void cleanup_tracer();
 // 用于注入到对外 RPC 调用（如 gRPC client metadata）中。
 auto get_trace_headers() -> std::map<std::string, std::string>;
 
+// gRPC 服务端的请求级 metrics 适合放在 server 构建阶段统一挂载；
+// 业务 handler 不再关心指标对象、方法名解析或状态码属性组装。
+void install_grpc_server_metrics(grpc::ServerBuilder &builder);
+
 class trace_span
 {
 public:
-    /// 创建一个新的根 Span（默认 internal，可指定 client/server）
-    explicit trace_span(const std::string &str = FILE_LINE, span_kind kind = span_kind::INTERNAL);
+    /// 创建一个新的根 Span（默认 internal，可指定 client/server）。
+    /// 默认名字来自调用点的 source_location，避免继续依赖宏来拼文件和函数名。
+    explicit trace_span(
+            span_kind kind = span_kind::INTERNAL,
+            std::source_location source = std::source_location::current()
+    );
+    /// gRPC handler 的常见入口：从 ServerContext 提取远端 Context，并创建 server span。
+    explicit trace_span(
+            const grpc::ServerContext &context,
+            std::source_location source = std::source_location::current()
+    );
     /// 从传入载体（如 gRPC metadata map）中提取远端 Context，并以其为父 Span 创建子 Span
     trace_span(
             const std::string &str,
