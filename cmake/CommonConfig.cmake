@@ -40,3 +40,13 @@ if(ENABLE_SANITIZE_ADDRESS)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
 endif()
+
+# Custom command to move compile_commands.json to a fixed path
+if(CMAKE_EXPORT_COMPILE_COMMANDS)
+    add_custom_target(copy_compile_commands ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_BINARY_DIR}/compile_commands.json
+        ${CMAKE_SOURCE_DIR}/build/compile_commands.json
+        COMMENT "Copying compile_commands.json to build"
+    )
+endif()
