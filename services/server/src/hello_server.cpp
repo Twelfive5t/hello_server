@@ -2,6 +2,7 @@
 #include "routes/routes.hpp"
 #include "telemetry/telemetry.hpp"
 
+#include <csignal>
 #include <cstdlib>
 #include <exception>
 #include <grpcpp/ext/proto_server_reflection_plugin.h>
@@ -10,6 +11,8 @@
 
 namespace
 {
+
+grpc::Server *g_server{ nullptr };
 
 auto otlp_endpoint() -> std::string
 {
@@ -55,7 +58,16 @@ void run_server()
 
     spdlog::info("Server listening on {}", server_address);
 
-    // 5. 阻塞等待
+    // 5. 注册信号处理（优雅关机，5s deadline）
+    g_server = server.get();
+    const auto shutdown_handler = [](int /*sig*/) {
+        spdlog::info("Shutdown signal received, initiating graceful shutdown...");
+        g_server->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(5));
+    };
+    std::signal(SIGTERM, shutdown_handler);
+    std::signal(SIGINT, shutdown_handler);
+
+    // 6. 阻塞等待
     server->Wait();
 
     spdlog::info("Server shut down.");
