@@ -11,6 +11,7 @@ class CompressorRecipe(ConanFile):
     # https://docs.conan.io/2.0/reference/conanfile/methods/requirements.html
     def requirements(self):
         self.requires("spdlog/1.13.0")
+        self.requires("nlohmann_json/3.11.3")
         self.requires("protobuf/5.27.0")
         self.requires("grpc/1.67.1")
         self.requires("opentelemetry-cpp/1.14.2")

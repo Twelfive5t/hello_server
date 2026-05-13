@@ -1,6 +1,8 @@
 #include "logger/logger.hpp"
 
+#include "nlohmann/json.hpp"
 #include "spdlog/async.h"
+#include "spdlog/formatter.h"
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
 
@@ -12,6 +14,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 namespace logger_detail
@@ -32,6 +35,45 @@ struct log_file_entry {
     std::filesystem::path path;
     std::filesystem::file_time_type last_write_time;
     std::uintmax_t size;
+};
+
+class json_formatter final : public spdlog::formatter
+{
+public:
+    void format(const spdlog::details::log_msg &msg, spdlog::memory_buf_t &dest) override
+    {
+        const auto time_t_val = std::chrono::system_clock::to_time_t(msg.time);
+        const auto ms =
+                std::chrono::duration_cast<std::chrono::milliseconds>(msg.time.time_since_epoch()) %
+                1000;
+
+        std::tm local_time{};
+        localtime_r(&time_t_val, &local_time);
+
+        std::array<char, K_TIMESTAMP_BUFFER_SIZE> ts_buf{};
+        const auto ts_len =
+                std::strftime(ts_buf.data(), ts_buf.size(), "%Y-%m-%d %H:%M:%S", &local_time);
+
+        std::array<char, 5> ms_buf{};
+        std::snprintf(ms_buf.data(), ms_buf.size(), ".%03lld", static_cast<long long>(ms.count()));
+
+        const nlohmann::json j = {
+            { "timestamp", std::string(ts_buf.data(), ts_len) + ms_buf.data() },
+            { "pid", static_cast<int>(::getpid()) },
+            { "tid", msg.thread_id },
+            { "level", std::string(spdlog::level::to_string_view(msg.level)) },
+            { "logger", std::string(msg.logger_name.data(), msg.logger_name.size()) },
+            { "message", std::string(msg.payload.data(), msg.payload.size()) },
+        };
+
+        const auto json_str = j.dump() + "\n";
+        dest.append(json_str.data(), json_str.data() + json_str.size());
+    }
+
+    [[nodiscard]] std::unique_ptr<spdlog::formatter> clone() const override
+    {
+        return std::make_unique<json_formatter>();
+    }
 };
 
 auto is_managed_log_file(const std::filesystem::directory_entry &entry) -> bool
@@ -140,7 +182,7 @@ void init_logger()
 
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     console_sink->set_level(spdlog::level::debug);
-    console_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%P:%t] [%^%l%$] %v");
+    console_sink->set_formatter(std::make_unique<logger_detail::json_formatter>());
 
     const auto log_path = logger_detail::build_log_path();
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
@@ -149,7 +191,7 @@ void init_logger()
             logger_detail::K_MAX_FILES_PER_PROCESS
     );
     file_sink->set_level(spdlog::level::debug);
-    file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%P:%t] [%l] %v");
+    file_sink->set_formatter(std::make_unique<logger_detail::json_formatter>());
 
     auto logger = std::make_shared<spdlog::async_logger>(
             "main",
