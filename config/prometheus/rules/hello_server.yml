@@ -2,7 +2,7 @@ groups:
   - name: hello_server
     rules:
       - alert: ServiceDown
-        expr: absent(grpc_server_started_total{grpc_service="ServerMessages.ServerMessagesService"})
+        expr: absent(rpc_server_requests_total)
         for: 1m
         labels:
           severity: critical
@@ -11,7 +11,7 @@ groups:
           description: "No gRPC metrics received from hello_server for more than 1 minute."
 
       - alert: HighErrorRate
-        expr: rate(grpc_server_handled_total{grpc_code!="OK"}[5m]) > 0.05
+        expr: sum(rate(rpc_server_requests_total{rpc_grpc_status_code!="0"}[5m])) / sum(rate(rpc_server_requests_total[5m])) > 0.05
         for: 2m
         labels:
           severity: warning
@@ -20,10 +20,10 @@ groups:
           description: "gRPC error rate is above 5% for the last 5 minutes."
 
       - alert: HighLatencyP99
-        expr: histogram_quantile(0.99, rate(grpc_server_handling_seconds_bucket[5m])) > 1
+        expr: histogram_quantile(0.99, sum by (le) (rate(rpc_server_duration_milliseconds_bucket[5m]))) > 1000
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "High gRPC P99 latency"
-          description: "P99 gRPC request latency exceeds 1 second for the last 5 minutes."
+          description: "P99 gRPC request latency exceeds 1000ms for the last 5 minutes."
