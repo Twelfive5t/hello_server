@@ -5,6 +5,9 @@ global:
     cluster: local
     env: dev
 
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
 storage:
   tsdb:
     retention:
