@@ -8,7 +8,7 @@ datasources:
     access: proxy
     isDefault: true
     jsonData:
-      tracesToLogsV2:
+      tracesToLogsV2:               # Trace 视图中关联 Loki 日志，时间窗口前后各扩展 5 分钟
         datasourceUid: loki
         spanStartTimeShift: '-5m'
         spanEndTimeShift: '5m'
@@ -18,7 +18,7 @@ datasources:
         filterByTraceID: false
         filterBySpanID: false
         customQuery: false
-      tracesToMetrics:
+      tracesToMetrics:              # Trace 视图中跳转到对应 Prometheus 指标
         datasourceUid: prometheus
         spanStartTimeShift: '-5m'
         spanEndTimeShift: '5m'
@@ -29,10 +29,10 @@ datasources:
           - name: Request rate
             query: sum(rate(rpc_server_requests_total{$$__tags}[5m]))
       nodeGraph:
-        enabled: true
+        enabled: true               # 开启服务拓扑图
       serviceMap:
-        datasourceUid: 'prometheus'
+        datasourceUid: 'prometheus' # 服务地图数据来自 Prometheus 中的 span metrics
       search:
         hide: false
       lokiSearch:
-        datasourceUid: 'loki'
+        datasourceUid: 'loki'       # Trace 搜索时同时搜索 Loki 日志

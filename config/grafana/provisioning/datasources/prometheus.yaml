@@ -17,7 +17,7 @@ datasources:
       disableRecordingRules: false
       seriesEndpoint: false
       timeInterval: 15s
-      incrementalQueryOverlapWindow: 10m
+      incrementalQueryOverlapWindow: 10m  # 增量查询时窗口重叠 10m，防止时间边界数据缺失
       exemplarTraceIdDestinations:
         - datasourceUid: tempo
-          name: traceID
+          name: traceID  # 指标面板中点击 exemplar 数据点，可跳转到 Tempo 对应 trace

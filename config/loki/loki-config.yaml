@@ -1,4 +1,4 @@
-auth_enabled: false
+auth_enabled: false  # 单机部署，无需多租户认证
 
 server:
   http_listen_port: 3100
@@ -7,16 +7,16 @@ common:
   ring:
     instance_addr: 127.0.0.1
     kvstore:
-      store: inmemory
+      store: inmemory  # 单节点模式，使用内存 KV，无需 etcd/consul
   replication_factor: 1
   path_prefix: /loki
 
 schema_config:
   configs:
     - from: 2024-01-01
-      store: tsdb
+      store: tsdb           # 索引存储使用 tsdb（推荐，比 boltdb 更高效）
       object_store: filesystem
-      schema: v13
+      schema: v13           # Loki 当前最新 schema 版本
       index:
         prefix: index_
         period: 24h
@@ -27,9 +27,9 @@ storage_config:
 
 compactor:
   working_directory: /loki/compactor
-  compaction_interval: 10m
+  compaction_interval: 10m  # 每 10 分钟合并一次旧 chunk，减少文件数量
   retention_enabled: true
   delete_request_store: filesystem
 
 limits_config:
-  retention_period: 744h
+  retention_period: 744h    # 日志保留 31 天（744h = 31d）

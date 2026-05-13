@@ -1,4 +1,4 @@
-stream_over_http_enabled: true
+stream_over_http_enabled: true  # 启用 HTTP 流式传输，Grafana UI 查询 Trace 时需要
 
 server:
   http_listen_port: 3200
@@ -9,20 +9,20 @@ distributor:
     otlp:
       protocols:
         grpc:
-          endpoint: 0.0.0.0:4317
+          endpoint: 0.0.0.0:4317  # 接收 OTLP gRPC 格式的 trace 数据
         http:
-          endpoint: 0.0.0.0:4318
+          endpoint: 0.0.0.0:4318  # 接收 OTLP HTTP 格式的 trace 数据
 
 storage:
   trace:
     backend: local
     wal:
-      path: /var/tempo/wal
+      path: /var/tempo/wal        # Write-Ahead Log，防止重启时丢失未落盘的 trace
     local:
       path: /var/tempo/blocks
 
 querier:
-  max_concurrent_queries: 10
+  max_concurrent_queries: 10  # 最多同时处理 10 个查询，防止内存压力过大
 
 query_frontend:
-  max_retries: 3
+  max_retries: 3  # 查询失败时最多重试 3 次

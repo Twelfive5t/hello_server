@@ -1,19 +1,19 @@
 global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
+  scrape_interval: 15s      # 每 15s 拉取一次指标
+  evaluation_interval: 15s  # 每 15s 评估一次告警规则
   external_labels:
     cluster: local
     env: dev
 
 rule_files:
-  - /etc/prometheus/rules/*.yml
+  - /etc/prometheus/rules/*.yml  # 加载告警规则，见 config/prometheus/rules/
 
 storage:
   tsdb:
     retention:
-      time: 15d
+      time: 15d  # 指标数据保留 15 天
   exemplars:
-    max_exemplars: 100000
+    max_exemplars: 100000  # 最多缓存 10 万条 exemplar（用于指标面板跳转到 Tempo trace）
 
 scrape_configs:
   - job_name: prometheus

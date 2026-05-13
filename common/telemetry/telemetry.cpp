@@ -135,11 +135,13 @@ auto format_span_name(const std::source_location &source) -> std::string
            std::string(short_function_name(source.function_name()));
 }
 
+// 解析后的 RPC 方法信息：短服务名（去掉包前缀）+ 方法名
 struct rpc_method_parts {
     std::string service_name;
     std::string method_name;
 };
 
+// 从 "/ServerMessages.ServerMessagesService/CheckOnline" 形式的全路径中提取短服务名和方法名
 auto parse_rpc_method(std::string_view full_method_name) -> rpc_method_parts
 {
     if (!full_method_name.empty() && full_method_name.front() == '/') {
@@ -159,6 +161,7 @@ auto parse_rpc_method(std::string_view full_method_name) -> rpc_method_parts
              .method_name = std::string(method_name) };
 }
 
+// 记录单次 RPC 调用的计数和耗时，附带 rpc.system/service/method/status_code 属性
 auto record_server_rpc_metrics(
         std::chrono::steady_clock::time_point started_at,
         std::string_view service_name,
@@ -633,6 +636,7 @@ void init_tracer(const telemetry_config &config)
     // 5. 设置全局 TracerProvider: 让后续代码可以通过 Provider::GetTracerProvider() 获取
     trace::Provider::SetTracerProvider(provider);
 
+    // 5. 初始化 Metrics Provider：通过 OTLP gRPC 周期性导出指标（默认 15s/次）
     opentelemetry::exporter::otlp::OtlpGrpcMetricExporterOptions metric_options;
     metric_options.endpoint = config.endpoint;
 
@@ -687,6 +691,7 @@ void cleanup_tracer()
 // ---------------------------------------------------------------------------
 namespace
 {
+// 将 std::map 适配为 OTel TextMapCarrier，用于 W3C TraceContext 的注入（Inject）和提取（Extract）
 struct map_text_carrier : public opentelemetry::context::propagation::TextMapCarrier {
     const std::map<std::string, std::string> *read_map = nullptr;
     std::map<std::string, std::string> *write_map = nullptr;
@@ -757,6 +762,7 @@ auto to_otel_kind(span_kind kind) -> opentelemetry::trace::SpanKind
 }
 } // namespace
 
+// trace_span 的 PIMPL 实现：持有 OTel Span 和 Scope，负责 Span 的创建、激活和结束
 class trace_span::impl
 {
 public:
@@ -883,6 +889,7 @@ trace_span::~trace_span() = default;
 trace_span::trace_span(trace_span &&) noexcept = default;
 auto trace_span::operator=(trace_span &&) noexcept -> trace_span & = default;
 
+// gRPC 服务端拦截器：在每个 RPC 调用的 PRE_SEND_STATUS 阶段记录请求计数和耗时
 class grpc_server_metrics_interceptor final : public grpc::experimental::Interceptor
 {
 public:
@@ -916,6 +923,7 @@ private:
     bool metrics_recorded_ = false;
 };
 
+// 拦截器工厂：为每个 RPC 创建一个 grpc_server_metrics_interceptor 实例
 class grpc_server_metrics_interceptor_factory final
     : public grpc::experimental::ServerInterceptorFactoryInterface
 {
