@@ -53,14 +53,6 @@ namespace resource = opentelemetry::sdk::resource;
 namespace
 {
 
-constexpr auto K_METRIC_EXPORT_INTERVAL = std::chrono::milliseconds(15000);
-constexpr auto K_METRIC_EXPORT_TIMEOUT = std::chrono::milliseconds(5000);
-constexpr auto K_RPC_SYSTEM = "grpc";
-constexpr auto K_SERVER_METRICS_METER_NAME = "hello_server";
-constexpr auto K_SERVER_METRICS_METER_VERSION = "1.0.0";
-constexpr auto K_REQUEST_COUNTER_NAME = "rpc.server.requests";
-constexpr auto K_REQUEST_DURATION_NAME = "rpc.server.duration";
-
 auto global_meter_provider() -> std::shared_ptr<metrics_sdk::MeterProvider> &
 {
     static std::shared_ptr<metrics_sdk::MeterProvider> provider;
@@ -71,16 +63,14 @@ auto server_metrics_meter() -> nostd::shared_ptr<metrics::Meter>
 {
     // 这些 instrument 属于服务端 RPC 指标 schema，本身是进程级单例；
     // 业务 handler 只声明 service/method，不应该重复参与 Meter/Instrument 的创建。
-    static auto meter = metrics::Provider::GetMeterProvider()->GetMeter(
-            K_SERVER_METRICS_METER_NAME, K_SERVER_METRICS_METER_VERSION
-    );
+    static auto meter = metrics::Provider::GetMeterProvider()->GetMeter("hello_server", "1.0.0");
     return meter;
 }
 
 auto server_request_counter() -> nostd::unique_ptr<metrics::Counter<std::uint64_t>> &
 {
     static auto counter = server_metrics_meter()->CreateUInt64Counter(
-            K_REQUEST_COUNTER_NAME,
+            "rpc.server.requests",
             "Total number of gRPC requests handled by the server",
             "{request}"
     );
@@ -90,7 +80,7 @@ auto server_request_counter() -> nostd::unique_ptr<metrics::Counter<std::uint64_
 auto server_request_duration_histogram() -> nostd::unique_ptr<metrics::Histogram<double>> &
 {
     static auto histogram = server_metrics_meter()->CreateDoubleHistogram(
-            K_REQUEST_DURATION_NAME, "End-to-end gRPC server request latency", "ms"
+            "rpc.server.duration", "End-to-end gRPC server request latency", "ms"
     );
     return histogram;
 }
@@ -184,7 +174,7 @@ auto record_server_rpc_metrics(
             std::pair<opentelemetry::nostd::string_view, opentelemetry::common::AttributeValue>,
             4>
             attributes = { {
-                    { "rpc.system", K_RPC_SYSTEM },
+                    { "rpc.system", "grpc" },
                     { "rpc.service", otel_service_name },
                     { "rpc.method", otel_method_name },
                     { "rpc.grpc.status_code", static_cast<std::int64_t>(status.error_code()) },
@@ -459,7 +449,7 @@ private:
 
     [[nodiscard]] static std::string to_hex(const opentelemetry::trace::SpanId &span_id)
     {
-        static constexpr size_t span_id_hex_len = 16;
+        static constexpr size_t span_id_hex_len = 16; // SpanId is 8 bytes → 16 hex chars
         std::array<char, span_id_hex_len> buf{};
         span_id.ToLowerBase16(buf);
         return { buf.data(), buf.size() };
@@ -648,8 +638,10 @@ void init_tracer(const telemetry_config &config)
 
     auto metric_exporter = otlp::OtlpGrpcMetricExporterFactory::Create(metric_options);
     metrics_sdk::PeriodicExportingMetricReaderOptions metric_reader_options{};
-    metric_reader_options.export_interval_millis = K_METRIC_EXPORT_INTERVAL;
-    metric_reader_options.export_timeout_millis = K_METRIC_EXPORT_TIMEOUT;
+    metric_reader_options.export_interval_millis =
+            std::chrono::milliseconds(15000); // 15s export interval
+    metric_reader_options.export_timeout_millis =
+            std::chrono::milliseconds(5000); // 5s export timeout
 
     auto metric_reader = metrics_sdk::PeriodicExportingMetricReaderFactory::Create(
             std::move(metric_exporter), metric_reader_options
@@ -680,7 +672,8 @@ void cleanup_tracer()
 {
     if (global_meter_provider()) {
         constexpr auto cleanup_timeout =
-                std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::seconds(3));
+                std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::seconds(3)
+                ); // 3s flush deadline
         global_meter_provider()->ForceFlush(cleanup_timeout);
         global_meter_provider()->Shutdown();
         global_meter_provider().reset();

@@ -15,7 +15,6 @@ namespace
 {
 
 constexpr std::string_view K_SERVER_ADDRESS = "0.0.0.0:50051";
-constexpr auto K_SHUTDOWN_TIMEOUT = std::chrono::seconds(5);
 
 auto otlp_endpoint() -> std::string
 {
@@ -65,7 +64,9 @@ void wait_for_shutdown(grpc::Server &server, sem_t &sem, sigset_t &signal_set)
 
     std::thread shutdown_thread([&server, &sem]() {
         (void)sem_wait(&sem);
-        server.Shutdown(std::chrono::system_clock::now() + K_SHUTDOWN_TIMEOUT);
+        server.Shutdown(
+                std::chrono::system_clock::now() + std::chrono::seconds(5)
+        ); // 5s graceful shutdown
     });
 
     server.Wait();

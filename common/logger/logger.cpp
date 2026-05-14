@@ -20,15 +20,12 @@
 namespace logger_detail
 {
 
-constexpr auto K_LOG_DIRECTORY = "/workspace/logs";
 constexpr auto K_LOG_FILE_PREFIX = "spdlog_";
 constexpr std::size_t K_BYTES_PER_MIB = 1024U * 1024U;
 constexpr std::size_t K_MAX_FILE_SIZE_BYTES = 10U * K_BYTES_PER_MIB;
 constexpr std::size_t K_MAX_FILES_PER_PROCESS = 5U;
 constexpr std::size_t K_MAX_TOTAL_SIZE_BYTES = 512U * K_BYTES_PER_MIB;
-constexpr auto K_RETENTION = std::chrono::hours(24 * 30);
 constexpr std::size_t K_ASYNC_QUEUE_SIZE = 8192U;
-constexpr std::size_t K_ASYNC_WORKER_COUNT = 1U;
 constexpr std::size_t K_TIMESTAMP_BUFFER_SIZE = 32U;
 
 struct log_file_entry {
@@ -54,14 +51,19 @@ public:
         const auto ts_len =
                 std::strftime(ts_buf.data(), ts_buf.size(), "%Y-%m-%d %H:%M:%S", &local_time);
 
-        std::array<char, 5> ms_buf{};
-        std::snprintf(ms_buf.data(), ms_buf.size(), ".%03lld", static_cast<long long>(ms.count()));
+        std::array<char, 5> ms_buf{}; // ".mmm\0"
+        (void
+        )std::snprintf(ms_buf.data(), ms_buf.size(), ".%03lld", static_cast<long long>(ms.count()));
 
         const nlohmann::json j = {
             { "timestamp", std::string(ts_buf.data(), ts_len) + ms_buf.data() },
             { "pid", static_cast<int>(::getpid()) },
             { "tid", msg.thread_id },
-            { "level", std::string(spdlog::level::to_string_view(msg.level)) },
+            { "level",
+              [&] {
+                  const auto sv = spdlog::level::to_string_view(msg.level);
+                  return std::string{ sv.data(), sv.size() };
+              }() },
             { "logger", std::string(msg.logger_name.data(), msg.logger_name.size()) },
             { "message", std::string(msg.payload.data(), msg.payload.size()) },
         };
@@ -127,7 +129,8 @@ void prune_expired_logs(const std::filesystem::path &log_directory)
         }
 
         const auto file_timestamp = entry.last_write_time();
-        if (now - to_system_clock(file_timestamp) > K_RETENTION) {
+        if (now - to_system_clock(file_timestamp) >
+            std::chrono::hours(24 * 30)) { // 30-day retention
             std::filesystem::remove(entry.path());
             continue;
         }
@@ -157,7 +160,7 @@ void prune_expired_logs(const std::filesystem::path &log_directory)
 
 auto build_log_path() -> std::filesystem::path
 {
-    const auto log_directory = std::filesystem::path(K_LOG_DIRECTORY);
+    const auto log_directory = std::filesystem::path("/workspace/logs");
     std::filesystem::create_directories(log_directory);
     prune_expired_logs(log_directory);
     return log_directory / (std::string(K_LOG_FILE_PREFIX) + startup_timestamp() + ".log");
@@ -176,7 +179,7 @@ void init_logger()
 
     if (!spdlog::thread_pool()) {
         spdlog::init_thread_pool(
-                logger_detail::K_ASYNC_QUEUE_SIZE, logger_detail::K_ASYNC_WORKER_COUNT
+                logger_detail::K_ASYNC_QUEUE_SIZE, 1U // single background flush thread
         );
     }
 
