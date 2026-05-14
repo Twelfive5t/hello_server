@@ -15,4 +15,17 @@ auto server_service::CheckOnline(
     return Status::OK;
 }
 
+auto server_service::ExitServer(
+        ServerContext *context,
+        const ExitServerRequest * /*request*/,
+        ExitServerReply * /*reply*/
+) -> Status
+{
+    trace_span trace(*context);
+    if (exit_sem_ != nullptr) {
+        (void)sem_post(exit_sem_);
+    }
+    return Status::OK;
+}
+
 } // namespace ServerMessages

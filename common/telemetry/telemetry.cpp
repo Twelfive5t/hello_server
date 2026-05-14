@@ -679,7 +679,9 @@ void init_tracer(const telemetry_config &config)
 void cleanup_tracer()
 {
     if (global_meter_provider()) {
-        global_meter_provider()->ForceFlush();
+        constexpr auto cleanup_timeout =
+                std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::seconds(3));
+        global_meter_provider()->ForceFlush(cleanup_timeout);
         global_meter_provider()->Shutdown();
         global_meter_provider().reset();
     }

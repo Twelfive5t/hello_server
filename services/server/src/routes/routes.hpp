@@ -1,9 +1,8 @@
 #include "server_messages.grpc.pb.h"
 
-#include <atomic>
 #include <grpcpp/grpcpp.h>
 #include <grpcpp/support/status.h>
-
+#include <semaphore.h>
 #pragma once
 namespace ServerMessages
 {
@@ -17,16 +16,11 @@ class server_service final : public ServerMessagesService::Service
 {
 
 private:
-    std::atomic<bool> stop_flag_; // 停止标志
+    sem_t *exit_sem_{};
+
 public:
-    explicit server_service()
-    {
-        stop_flag_.store(false);
-    }
-    ~server_service() override
-    {
-        stop_flag_.store(true);
-    }
+    explicit server_service() = default;
+    ~server_service() override = default;
     server_service(const server_service &) = delete;
     auto operator=(const server_service &) -> server_service & = delete;
     server_service(server_service &&) = delete;
@@ -37,6 +31,17 @@ public:
             const CheckOnlineRequest *request,
             CheckOnlineReply *reply
     ) -> Status override;
+
+    auto ExitServer(
+            ServerContext *context,
+            const ExitServerRequest *request,
+            ExitServerReply *reply
+    ) -> Status override;
+
+    void set_sem(sem_t *sem)
+    {
+        exit_sem_ = sem;
+    }
 };
 
 } // namespace ServerMessages
