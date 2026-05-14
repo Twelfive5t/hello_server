@@ -34,8 +34,10 @@
 #include <iomanip>
 #include <map>
 #include <mutex>
+#ifdef __linux__
 #include <pthread.h>
 #include <sched.h>
+#endif
 #include <set>
 #include <sstream>
 #include <string>
@@ -555,6 +557,7 @@ private:
 
 void init_tracer(const telemetry_config &config)
 {
+#ifdef __linux__
     // 保存当前线程的亲和性，以便在创建后台线程后恢复
     cpu_set_t original_cpuset;
     bool restore_affinity = false;
@@ -573,6 +576,7 @@ void init_tracer(const telemetry_config &config)
             }
         }
     }
+#endif
 
     // 1. 创建 Exporter: 负责将 Trace 数据发送到后端 (如 Jaeger, Zipkin, OTel Collector)
     // 这里使用 OTLP gRPC Exporter，它是 OpenTelemetry 的标准协议
@@ -585,9 +589,11 @@ void init_tracer(const telemetry_config &config)
     auto filtering_exp = std::make_unique<filtering_exporter>(std::move(exporter));
 
     // 恢复调用线程原来的亲和性
+#ifdef __linux__
     if (restore_affinity) {
         pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &original_cpuset);
     }
+#endif
 
     // 2. 创建 Processor: 负责处理 Span (如批量发送，减少网络开销)
     // BatchSpanProcessor 会在后台缓冲 Span，并批量发送给 Exporter
