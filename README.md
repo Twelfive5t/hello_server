@@ -86,15 +86,6 @@ docker compose ps
 - [Alloy UI](http://localhost:12345)
 - gRPC: localhost:50051
 
-最小验证：
-
-```sh
-docker compose exec service grpc_health_probe --addr 127.0.0.1:50051
-grpcurl -plaintext localhost:50051 list
-```
-
-如果本机没有安装 grpcurl，可只执行健康检查。
-
 ## Build
 
 ### Prerequisites
@@ -110,7 +101,7 @@ grpcurl -plaintext localhost:50051 list
 
 ### Common Commands
 
-在宿主机直接构建：
+在开发容器内直接构建：
 
 ```sh
 ./build.sh Server_Release
@@ -157,24 +148,6 @@ cd products/bin1.0.0
 ./stop_service.sh
 ```
 
-### Single Process
-
-单独运行服务时，需保证日志目录和 OTLP 端点可用：
-
-```sh
-mkdir -p /workspace/logs
-export TELEMETRY_OTLP_ENDPOINT=localhost:4317
-./products/bin1.0.0/main
-```
-
-当前服务提供一个最小 RPC：
-
-```proto
-service ServerMessagesService {
-  rpc CheckOnline(CheckOnlineRequest) returns (CheckOnlineReply) {}
-}
-```
-
 ## Configuration
 
 最常见的配置入口：
@@ -214,22 +187,6 @@ service ServerMessagesService {
 - Clang 18
 - clang-format 与 clang-tidy 已接入构建流程
 
-## Test
-
-仓库当前没有提交自动化测试框架，也没有启用 CTest。
-
-现阶段建议的回归方式：
-
-```sh
-./build_in_docker.sh Server_Release
-cd products/bin1.0.0
-./start_service.sh
-docker compose exec service grpc_health_probe --addr 127.0.0.1:50051
-curl -fsSL http://localhost:9090/-/healthy
-curl -fsSL http://localhost:3000/api/health
-./stop_service.sh
-```
-
 ## Observability
 
 服务默认接入以下观测组件：
@@ -267,16 +224,6 @@ README 只保留入口级信息。补充内容见：
 2. 保持改动聚焦，并同步更新相关脚本、配置或文档。
 3. 至少完成一次 Release 构建和一次基本运行验证。
 4. 使用 Conventional Commits 风格提交消息，例如 feat(metrics): add rpc metrics。
-
-提交前建议执行：
-
-```sh
-./build_in_docker.sh Server_Release
-cd products/bin1.0.0
-./start_service.sh
-docker compose exec service grpc_health_probe --addr 127.0.0.1:50051
-./stop_service.sh
-```
 
 ## License
 
