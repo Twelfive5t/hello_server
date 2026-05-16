@@ -1,2 +1,2 @@
 #!/bin/bash
-docker compose -p common_program -f docker-compose.yaml down
+docker compose -p common_program -f docker-compose.yaml -f docker-compose.telemetry.yaml down

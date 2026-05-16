@@ -64,7 +64,9 @@ flowchart LR
 ├── conanfile.py
 ├── build.sh
 ├── build_in_docker.sh
-├── docker-compose.yaml
+├── docker-compose.yaml              # 业务服务编排
+├── docker-compose.telemetry.yaml    # 遥测基础设施编排
+├── start_service.sh / stop_service.sh
 └── version.txt
 ```
 
@@ -76,7 +78,7 @@ flowchart LR
 ./build_in_docker.sh Server_Release
 cd products/bin1.0.0
 ./start_service.sh
-docker compose ps
+docker compose -p common_program ps
 ```
 
 启动后可访问：
@@ -155,7 +157,8 @@ cd products/bin1.0.0
 - version.txt: 项目版本与安装目录版本号
 - .env: builder、runtime、product 镜像名
 - CMakePresets.json: Debug / Release 预设
-- docker-compose.yaml: 运行栈编排
+- docker-compose.yaml: 业务服务编排
+- docker-compose.telemetry.yaml: 遥测基础设施编排（Alloy/Prometheus/Loki/Tempo/Grafana）
 
 关键运行时环境变量：
 
@@ -165,7 +168,7 @@ cd products/bin1.0.0
 
 - /workspace/logs
 
-如果需要调整端口、镜像名或观测链路，优先同步检查 docker-compose.yaml 和 config/ 下对应配置。
+如果需要调整端口、镜像名或观测链路，优先同步检查 docker-compose.yaml、docker-compose.telemetry.yaml 和 config/ 下对应配置。
 
 ## Development
 

@@ -7,6 +7,7 @@ cp start_service.sh products/bin$SERVER_VERSION/start_service.sh
 cp stop_service.sh products/bin$SERVER_VERSION/stop_service.sh
 cp package/Dockerfile products/bin$SERVER_VERSION/Dockerfile
 cp docker-compose.yaml products/bin$SERVER_VERSION/docker-compose.yaml
+cp docker-compose.telemetry.yaml products/bin$SERVER_VERSION/docker-compose.telemetry.yaml
 rm -rf products/bin$SERVER_VERSION/config
 cp -r config products/bin$SERVER_VERSION/
 
